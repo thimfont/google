@@ -1,0 +1,129 @@
+function doGet(e) {
+  var propertyStore = pegaPropriedadesDoScript_();
+  
+  if (!propertyStore.getProperty('refresh_token')) {
+    var stateToken = ScriptApp
+    .newStateToken()
+    .withMethod('obterAutorizacaoDoUsuario')
+    .withArgument('name', 'value')
+    .withTimeout(2000)
+    .createToken();
+    
+    var params = {
+      state: stateToken,
+      scope: [
+        "defirniEscopo", 
+        "defirniEscopo"
+      ].join(" "),
+      client_id: propertyStore.getProperty('client_id'),
+      redirect_uri: obterUrlDeRetorno(true),
+      response_type: 'code',
+      access_type: 'offline',
+      approval_prompt: 'force'
+    };
+    var queryString = Object.keys(params).map(function (e) {
+      return e + '=' + encodeURIComponent(params[e]);
+    }).join("&");
+    
+    var url = 'https://accounts.google.com/o/oauth2/auth?' + queryString;
+    return HtmlService.createHtmlOutput("<a href='URL' target='_blank'>Clique aqui para autorizar</a>".replace("URL", url));
+  } else {
+    return HtmlService.createHtmlOutput("Script autorizado");
+  }
+}
+
+// troca código de autorização por um token de acesso
+function obterAutorizacaoDoUsuario(e) { 
+  var propertyStore = pegaPropriedadesDoScript_();
+  var props = propertyStore.getProperties();
+  
+  var credentials = fazerUmaSolicitacaoHttpPost_(
+    "https://accounts.google.com/o/oauth2/token", {
+      code: e.parameter.code,
+      redirect_uri: obterUrlDeRetorno(true),
+      client_id: props.client_id,
+      client_secret: props.client_secret,
+      grant_type: "authorization_code"
+    });
+  
+  if (!credentials.error) {
+    propertyStore.setProperty('refresh_token', credentials.refresh_token);
+    return HtmlService.createHtmlOutput("OK");
+  }
+  
+  return HtmlService.createHtmlOutput(credentials.error);
+}
+
+function fazerUmaSolicitacaoHttpPost_(url, payload) {
+  try {
+    var response = UrlFetchApp.fetch(url, {
+      method: "POST",
+      payload: payload,
+      muteHttpExceptions: true
+    }).getContentText();  
+    return JSON.parse(response);
+  } catch (f) {
+    Logger.log(f.toString());
+  }
+  return {};
+}
+
+// Descobrir url de retorno do Apps Script
+// Ela é configurada como URL de callback no projeto GCP
+function obterUrlDeRetorno(silent) {
+  var url = ScriptApp.getService().getUrl();
+  var callbackUrl = (url.indexOf('/exec') >= 0 ? url.slice(0, -4) : url.slice(0, -3)) + 'usercallback';
+  if (!silent) Logger.log(callbackUrl);
+  return callbackUrl;
+}
+
+function obterUmTokenDeAcesso_() {
+  var accessToken = getCacheStore_().get("access_token");
+  if (!accessToken) {
+    accessToken = atualizarTokenDeAcesso_();
+  }
+  return accessToken;
+}
+
+function atualizarTokenDeAcesso_() {
+  var props = pegaPropriedadesDoScript_().getProperties();
+  var response = fazerUmaSolicitacaoHttpPost_(
+    "https://accounts.google.com/o/oauth2/token", {
+      client_id: props.client_id,
+      client_secret: props.client_secret,
+      refresh_token: props.refresh_token,
+      grant_type: "refresh_token"
+    });
+  
+  if (response.hasOwnProperty("access_token")) {
+    guardaTokenDeAcessoNoCache_(response.access_token);
+    return response.access_token;
+  } 
+  return null;  
+}
+
+function guardaTokenDeAcessoNoCache_(accessToken) {
+  getCacheStore_().put("access_token", accessToken, 3300);
+}
+
+function getCacheStore_() {
+  return CacheService.getScriptCache();
+}
+
+// Obtenha o cliente_id e client_secret ao registrar aplicação cliente no projeto GCP
+function guardaCredenciaisDaAplicacaoNaPropriedadeDoScript() {    
+  removePropriedadesDoScript_();
+  pegaPropriedadesDoScript_().setProperties({
+    "client_id": "",
+    "client_secret": ""
+  });
+}
+
+function pegaPropriedadesDoScript_() {
+  return PropertiesService.getScriptProperties();
+}
+
+function removePropriedadesDoScript_() {
+  pegaPropriedadesDoScript_().deleteAllProperties();
+  getCacheStore_().remove("access_token")
+}
