@@ -1,0 +1,5 @@
+function acessarArquivos(){
+  return DriveApp.getRootFolder().getFoldersByName("nomePasta").next()
+  .getFoldersByName("nomePasta2").next()
+  .getFilesByName("local.jpg").next();
+}
