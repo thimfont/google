@@ -1,0 +1,5 @@
+function gravarDadosNaPlanilha_(array){
+  var planilha = SpreadsheetApp.openById(idDaplanilha);
+  var guia = ss.getSheetByName('nomeDaGuia');
+  guia.appendRow(array)
+}
